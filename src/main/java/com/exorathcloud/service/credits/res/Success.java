@@ -6,4 +6,13 @@ package com.exorathcloud.service.credits.res;
 public class Success {
     private boolean success;
     private String error;
+
+    public Success(boolean success){
+        this.success = success;
+    }
+
+    public Success(boolean success, String error){
+        this(success);
+        this.error = error;
+    }
 }
