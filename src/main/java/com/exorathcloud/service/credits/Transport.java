@@ -10,8 +10,8 @@ import spark.Route;
 import java.util.Calendar;
 
 import static spark.Spark.get;
-import static spark.Spark.patch;
 import static spark.Spark.port;
+import static spark.Spark.post;
 
 /**
  * Created by toonsev on 12/17/2016.
@@ -28,8 +28,8 @@ public class Transport {
         port(portProvider.getPort());
 
         get("/accounts/:accountId", getGetCreditsRoute(service), GSON::toJson);
-        patch("/accounts/:accountId/unsafeInc", getUnsafeIncRoute(service), GSON::toJson);
-        patch("/accounts/:accountId/inc", getUnsafeIncRoute(service), GSON::toJson);
+        post("/accounts/:accountId/unsafeInc", getUnsafeIncRoute(service), GSON::toJson);
+        post("/accounts/:accountId/inc", getUnsafeIncRoute(service), GSON::toJson);
     }
 
     public static Route getGetCreditsRoute(Service service) {
