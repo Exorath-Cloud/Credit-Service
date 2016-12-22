@@ -18,6 +18,8 @@ package com.exorathcloud.service.credits.res;
 
 import org.mongodb.morphia.annotations.*;
 
+import java.util.List;
+
 /**
  * Created by toonsev on 12/21/2016.
  */
@@ -34,9 +36,10 @@ public class Account {
     @Property(BALANCE_KEY)
     private Long balance;
     @Property(PENDING_TRANSACTIONS_KEY)
-    private String[] pendingTransactionIds;
+    private List<String> pendingTransactionIds;
 
-    private transient boolean hasMorePendingTransactions;
+    @Transient
+    private Boolean hasMorePendingTransactions;
 
     public String getAccountId() {
         return accountId;
@@ -46,11 +49,19 @@ public class Account {
         return balance;
     }
 
-    public String[] getPendingTransactionIds() {
+    public List<String> getPendingTransactionIds() {
         return pendingTransactionIds;
     }
 
     public boolean hasMorePendingTransactions() {
         return hasMorePendingTransactions;
+    }
+
+    public void setHasMorePendingTransactions(boolean hasMorePendingTransactions) {
+        this.hasMorePendingTransactions = hasMorePendingTransactions;
+    }
+
+    public void setBalance(Long balance) {
+        this.balance = balance;
     }
 }

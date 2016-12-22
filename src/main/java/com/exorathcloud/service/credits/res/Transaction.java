@@ -50,6 +50,9 @@ public class Transaction {
     @Property(AMOUNT_KEY)
     private long amount;
 
+    public Transaction(){
+
+    }
     public Transaction(String transactionId, String accountId, TransactionState transactionState, Date lastUpdated, long amount){
         this.transactionId = transactionId;
         this.accountId = accountId;

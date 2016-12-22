@@ -18,14 +18,16 @@ package com.exorathcloud.service.credits;
 
 
 import com.exorath.service.commons.portProvider.PortProvider;
+import com.exorathcloud.service.credits.res.Account;
 import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 import com.exorathcloud.service.credits.res.TransactionState;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
+import com.google.gson.*;
 import spark.Route;
 
-import java.util.Calendar;
+
+import java.lang.reflect.Type;
+import java.util.Date;
 
 import static spark.Spark.get;
 import static spark.Spark.port;
@@ -35,7 +37,13 @@ import static spark.Spark.post;
  * Created by toonsev on 12/17/2016.
  */
 public class Transport {
-    private static final Gson GSON = new Gson();
+    private static final Gson GSON = new GsonBuilder()
+            .registerTypeAdapter(Date.class,  new JsonSerializer<Date>() {
+                @Override
+                public JsonElement serialize(Date date, Type type, JsonSerializationContext jsonSerializationContext) {
+                    return new JsonPrimitive(date.getTime());
+                }
+            }).create();
 
     /**
      * Sets up the http transport to the service
@@ -53,8 +61,8 @@ public class Transport {
     public static Route getGetCreditsRoute(Service service) {
         return (req, res) -> {
             try {
-                Long credits = service.getCredits(req.params("accountId"));
-                return credits == null ? new JsonObject() : credits;
+                Account account = service.getAccount(req.params("accountId"));
+                return account == null ? new JsonObject() : account;
             } catch (Exception e) {
                 e.printStackTrace();
                 throw e;

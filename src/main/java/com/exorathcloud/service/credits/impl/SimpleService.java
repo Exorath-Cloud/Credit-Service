@@ -25,7 +25,6 @@ import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 
 import java.util.Calendar;
-import java.util.Date;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -67,34 +66,49 @@ public class SimpleService implements Service {
         if (result == true)
             return new Transaction(transactionId, accountId, TransactionState.COMPLETED, Calendar.getInstance().getTime(), amount);//return completed state
         else
-            return new Transaction(transactionId, accountId, TransactionState.CANCELLED, Calendar.getInstance().getTime(), amount);
+            return databaseProvider.getTransaction(transactionId);
     }
 
-    public Long getCredits(String accountId) {
+    @Override
+    public Account getAccount(String accountId) {
         Account account = databaseProvider.getAccount(accountId, 10);
         if (account == null)
             return null;
-        if (account.getPendingTransactionIds().length > 0) {
+        if (account.getPendingTransactionIds().size() > 0) {
             long minimum = getMinimum(accountId);
+            int i = 0;
             for (String transactionId : account.getPendingTransactionIds()) {
+                i++;
+                if(i > 20) {
+                    account.setHasMorePendingTransactions(true);
+                    break;
+                }
                 long maxTime = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(15);
                 Transaction transaction = databaseProvider.getTransaction(transactionId);
-                if (transaction.getLastUpdate().getTime() < maxTime)
+                if (transaction.getLastUpdate().getTime() < maxTime) {
                     handleTransaction(accountId, transactionId, transaction.getAmount(), minimum);
+                    account.setBalance(account.getBalance() + transaction.getAmount());
+                    account.getPendingTransactionIds().remove(transaction.getTransactionId());
+                }
             }
         }
         //TODO: Start async process
-        return account.getBalance();//return credits
+        return account;
+    }
+
+    public Long getCredits(String accountId) {
+        Account account = getAccount(accountId);
+        return account == null ? null : account.getBalance();
     }
 
     private boolean handleTransaction(String accountId, String transactionId, long amount, Long minimum) {
         //create new pending transaction in [transactions]
-        boolean created = databaseProvider.putTransaction(TransactionState.NOT_CREATED, new Transaction(transactionId, accountId, TransactionState.PENDING, Calendar.getInstance().getTime(), amount));
+        TransactionState created = databaseProvider.putTransaction(TransactionState.NOT_CREATED, new Transaction(transactionId, accountId, TransactionState.PENDING, Calendar.getInstance().getTime(), amount));
         //add transaction to [users]transactions
-        if (created)
+        if (created == TransactionState.PENDING)
             databaseProvider.putPendingTransactionInAccount(accountId, transactionId);
         //Change transaction state to applied
-        if (!databaseProvider.putTransaction(TransactionState.PENDING, new Transaction(transactionId, accountId, TransactionState.APPLIED, Calendar.getInstance().getTime(), amount)))
+        if (databaseProvider.putTransaction(TransactionState.PENDING, new Transaction(transactionId, accountId, TransactionState.APPLIED, Calendar.getInstance().getTime(), amount)) != TransactionState.APPLIED)
             return false;
         //update credits & remove transactionId from [users] (if transactionId is present!)
         Success incremented = databaseProvider.safeIncrement(accountId, transactionId, amount, minimum);

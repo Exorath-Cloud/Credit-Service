@@ -32,7 +32,7 @@ public interface DatabaseProvider {
 
     Success safeIncrement(String accountId, String transactionId, long amount, Long minimum);
 
-    boolean putTransaction(TransactionState requiredState, Transaction transaction);
+    TransactionState putTransaction(TransactionState requiredState, Transaction transaction);
 
     boolean putPendingTransactionInAccount(String accountId, String transactionId);
 

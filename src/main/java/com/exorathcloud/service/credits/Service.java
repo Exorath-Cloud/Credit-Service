@@ -16,6 +16,7 @@
 
 package com.exorathcloud.service.credits;
 
+import com.exorathcloud.service.credits.res.Account;
 import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 
@@ -58,7 +59,7 @@ public interface Service {
      *
      * @return the amount of credits the specified account has, null if the account does not exist
      */
-    Long getCredits(String account);
+    Account getAccount(String accountId);
 
 
 }

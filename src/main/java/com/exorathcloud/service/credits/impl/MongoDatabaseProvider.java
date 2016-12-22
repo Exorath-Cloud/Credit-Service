@@ -24,6 +24,7 @@ import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 import com.exorathcloud.service.credits.res.TransactionState;
 import com.google.gson.Gson;
+import com.mongodb.DuplicateKeyException;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.Morphia;
 import org.mongodb.morphia.UpdateOptions;
@@ -85,7 +86,7 @@ public class MongoDatabaseProvider implements DatabaseProvider {
     }
 
     @Override
-    public boolean putTransaction(TransactionState requiredState, Transaction transaction) {
+    public TransactionState putTransaction(TransactionState requiredState, Transaction transaction) {
         Query<Transaction> query = datastore.createQuery(Transaction.class).field(Mapper.ID_KEY).equal(transaction.getTransactionId());
         UpdateOperations<Transaction> ops = datastore.createUpdateOperations(Transaction.class)
                 .setOnInsert(Transaction.ACCOUNT_ID_KEY, transaction.getAccountId())
@@ -94,16 +95,17 @@ public class MongoDatabaseProvider implements DatabaseProvider {
                 .set(Transaction.LAST_UPDATE_KEY, transaction.getLastUpdate());
         UpdateOptions options = new UpdateOptions();
         if (requiredState == TransactionState.NOT_CREATED) {
-            System.out.println("upserted");
             options = options.upsert(true);
             query = query.field(Transaction.STATE_KEY).doesNotExist();
         } else
             query.field(Transaction.STATE_KEY).equal(requiredState);
 
-        UpdateResults res = datastore.update(query, ops, options);
-        System.out.println(res.getUpdatedCount());
-        System.out.println(res.getInsertedCount());
-        return res.getUpdatedCount() > 0 || res.getInsertedCount() > 0;
+        try {
+            UpdateResults res = datastore.update(query, ops, options);
+            return res.getUpdatedCount() > 0 || res.getInsertedCount() > 0 == true ? transaction.getTransactionState() : null;
+        }catch(DuplicateKeyException e){
+            return null;
+        }
     }
 
     @Override
