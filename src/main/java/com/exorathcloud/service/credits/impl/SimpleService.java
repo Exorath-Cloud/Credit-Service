@@ -40,14 +40,18 @@ public class SimpleService implements Service {
     public Transaction increment(String accountId, long amount, String transactionId) {
         Long minimum = null;//if amount > 0 this will stay null
         if (amount < 0) {//Check if the account has enough credits, return failed transaction if not sufficient
-            long credits = getCredits(accountId);
+            Long creditsLong = getCredits(accountId);
+            long credits = creditsLong == null ? 0l : creditsLong;
             minimum = minimumCreditsProvider.getMinimumCredits(accountId);
-            if (getCredits(accountId) < minimum)
+            if (credits + amount < minimum)
                 return new Transaction(transactionId, accountId, TransactionState.NOT_CREATED, null, amount);
         }
-        handleTransaction(accountId, transactionId, amount, minimum);
 
-        return new Transaction(transactionId, accountId, TransactionState.COMPLETED, Calendar.getInstance().getTime(), amount);//return completed state
+        boolean result = handleTransaction(accountId, transactionId, amount, minimum);
+        if (result == true)
+            return new Transaction(transactionId, accountId, TransactionState.COMPLETED, Calendar.getInstance().getTime(), amount);//return completed state
+        else
+            return new Transaction(transactionId, accountId, TransactionState.CANCELLED, Calendar.getInstance().getTime(), amount);
     }
 
     public Long getCredits(String accountId) {
@@ -67,17 +71,21 @@ public class SimpleService implements Service {
         return account.getBalance();//return credits
     }
 
-    private void handleTransaction(String accountId, String transactionId, long amount, Long minimum) {
+    private boolean handleTransaction(String accountId, String transactionId, long amount, Long minimum) {
         //create new pending transaction in [transactions]
-        databaseProvider.putTransaction(TransactionState.NOT_CREATED, new Transaction(transactionId, accountId, TransactionState.PENDING, Calendar.getInstance().getTime(), amount));//TODO: Handle boolean response
+        boolean created = databaseProvider.putTransaction(TransactionState.NOT_CREATED, new Transaction(transactionId, accountId, TransactionState.PENDING, Calendar.getInstance().getTime(), amount));
         //add transaction to [users]transactions
-        databaseProvider.putPendingTransactionInAccount(accountId, transactionId);
+        if (created)
+            databaseProvider.putPendingTransactionInAccount(accountId, transactionId);
         //Change transaction state to applied
-        databaseProvider.putTransaction(TransactionState.PENDING, new Transaction(transactionId, accountId, TransactionState.APPLIED, Calendar.getInstance().getTime(), amount));//TODO: Handle boolean response
+        if (!databaseProvider.putTransaction(TransactionState.PENDING, new Transaction(transactionId, accountId, TransactionState.APPLIED, Calendar.getInstance().getTime(), amount)))
+            return false;
         //update credits & remove transactionId from [users] (if transactionId is present!)
-        databaseProvider.safeIncrement(accountId, transactionId, amount, minimum);
+        Success incremented = databaseProvider.safeIncrement(accountId, transactionId, amount, minimum);
+        TransactionState state = incremented.isSuccess() ? TransactionState.COMPLETED : TransactionState.CANCELLED;
         //Update [transactions] to completed
-        databaseProvider.putTransaction(TransactionState.APPLIED, new Transaction(transactionId, accountId, TransactionState.COMPLETED, Calendar.getInstance().getTime(), amount));//TODO: Handle boolean response
+        databaseProvider.putTransaction(TransactionState.APPLIED, new Transaction(transactionId, accountId, state, Calendar.getInstance().getTime(), amount));
+        return incremented.isSuccess();
     }
 
     private long getMinimum(String accountId) {

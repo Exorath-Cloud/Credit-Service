@@ -7,6 +7,7 @@ import com.exorathcloud.service.credits.res.Account;
 import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 import com.exorathcloud.service.credits.res.TransactionState;
+import com.google.gson.Gson;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.Morphia;
 import org.mongodb.morphia.UpdateOptions;
@@ -22,7 +23,9 @@ import java.util.Arrays;
  * Created by toonsev on 12/22/2016.
  */
 public class MongoDatabaseProvider implements DatabaseProvider {
-    private final Morphia morphia = new Morphia();{
+    private final Morphia morphia = new Morphia();
+
+    {
         morphia.mapPackage("com.exorathcloud.service.credits.res");
     }
 
@@ -43,13 +46,13 @@ public class MongoDatabaseProvider implements DatabaseProvider {
         Query<Account> query = datastore.createQuery(Account.class).field(Mapper.ID_KEY).equal(accountId);
         UpdateOperations<Account> ops = datastore.createUpdateOperations(Account.class).inc("balance", amount);
         UpdateOptions opts = new UpdateOptions();
-        if(minimum == null)
+        if (minimum == null)
             opts.upsert(true);
-        else
-            query = query.field("balance").greaterThanOrEq(minimum);
+        else if (amount < 0)
+            query = query.field("balance").greaterThanOrEq(minimum - amount);
 
-       UpdateResults res = datastore.update(query, ops, opts);
-        return res.getUpdatedCount() > 0 ? new Success(true) : new Success(false, "No document with exists or minimum not met");
+        UpdateResults res = datastore.update(query, ops, opts);
+        return res.getUpdatedCount() > 0 || res.getInsertedCount() > 0 ? new Success(true) : new Success(false, "Not enough credits or document does not exist");
     }
 
     @Override
@@ -74,13 +77,17 @@ public class MongoDatabaseProvider implements DatabaseProvider {
                 .set(Transaction.STATE_KEY, transaction.getTransactionState())
                 .set(Transaction.LAST_UPDATE_KEY, transaction.getLastUpdate());
         UpdateOptions options = new UpdateOptions();
-        if(requiredState == TransactionState.NOT_CREATED) {
+        if (requiredState == TransactionState.NOT_CREATED) {
+            System.out.println("upserted");
             options = options.upsert(true);
-            query.field(Transaction.STATE_KEY).doesNotExist();
-        }else
+            query = query.field(Transaction.STATE_KEY).doesNotExist();
+        } else
             query.field(Transaction.STATE_KEY).equal(requiredState);
-        UpdateResults res = datastore.update(query, ops);
-        return res.getUpdatedCount() > 0;
+
+        UpdateResults res = datastore.update(query, ops, options);
+        System.out.println(res.getUpdatedCount());
+        System.out.println(res.getInsertedCount());
+        return res.getUpdatedCount() > 0 || res.getInsertedCount() > 0;
     }
 
     @Override
@@ -89,7 +96,7 @@ public class MongoDatabaseProvider implements DatabaseProvider {
         UpdateOperations<Account> ops = datastore.createUpdateOperations(Account.class).push(Account.PENDING_TRANSACTIONS_KEY, transactionId);
         UpdateOptions opts = new UpdateOptions().upsert(true);
         UpdateResults res = datastore.update(query, ops, opts);
-        return res.getUpdatedCount() > 0;
+        return res.getUpdatedCount() > 0 || res.getInsertedCount() > 0;
     }
 
     @Override

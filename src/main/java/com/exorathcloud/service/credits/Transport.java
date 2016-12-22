@@ -2,9 +2,11 @@ package com.exorathcloud.service.credits;
 
 
 import com.exorath.service.commons.portProvider.PortProvider;
+import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 import com.exorathcloud.service.credits.res.TransactionState;
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import spark.Route;
 
 import java.util.Calendar;
@@ -33,25 +35,48 @@ public class Transport {
     }
 
     public static Route getGetCreditsRoute(Service service) {
-        return (req, res) -> service.getCredits(req.params("accountId"));
+        return (req, res) -> {
+            try {
+                Long credits = service.getCredits(req.params("accountId"));
+                return credits == null ? new JsonObject() : credits;
+            } catch (Exception e) {
+                e.printStackTrace();
+                throw e;
+            }
+        };
     }
 
     public static Route getUnsafeIncRoute(Service service) {
-        return (req, res) -> service.incrementUnsafe(req.params("accountId"), Long.valueOf(req.queryParams("credits")));
+        return (req, res) -> {
+            try {
+                Long amount = Long.valueOf(req.queryParams("amount"));
+                if(amount == null)
+                    return new Success(false, "no 'amount' query parameter specified.");
+                return service.incrementUnsafe(req.params("accountId"), amount);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return new Success(false, e.getMessage());
+            }
+        };
     }
 
     public static Route getSafeIncRoute(Service service) {
         return (req, res) -> {
             long amount = Long.valueOf(req.queryParams("amount"));
-            String accountId = req.queryParams("accountId");
+            String accountId = req.params("accountId");
             String transactionId = req.queryParams("transactionId");
+            if (accountId == null || amount == 0)
+                return new Transaction(transactionId, accountId, TransactionState.NOT_CREATED, null, 0);
+            try {
 
-            if(transactionId == null || accountId == null || amount == 0)
-                return new Transaction(transactionId, accountId, TransactionState.CANCELLED, Calendar.getInstance().getTime(), 0);
-            if(transactionId == null){
-                return service.increment(accountId, amount);
-            }else{
-                return service.increment(accountId, amount, transactionId);
+                if (transactionId == null) {
+                    return service.increment(accountId, amount);
+                } else {
+                    return service.increment(accountId, amount, transactionId);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                return new Transaction(transactionId, accountId, TransactionState.NOT_CREATED, null, amount);
             }
         };
     }

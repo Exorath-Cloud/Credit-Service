@@ -15,4 +15,8 @@ public class Success {
         this(success);
         this.error = error;
     }
+
+    public boolean isSuccess() {
+        return success;
+    }
 }
