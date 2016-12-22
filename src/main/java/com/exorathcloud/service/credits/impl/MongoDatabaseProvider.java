@@ -7,76 +7,93 @@ import com.exorathcloud.service.credits.res.Account;
 import com.exorathcloud.service.credits.res.Success;
 import com.exorathcloud.service.credits.res.Transaction;
 import com.exorathcloud.service.credits.res.TransactionState;
-import com.mongodb.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.result.UpdateResult;
-import org.bson.Document;
+import org.mongodb.morphia.Datastore;
+import org.mongodb.morphia.Morphia;
+import org.mongodb.morphia.UpdateOptions;
+import org.mongodb.morphia.mapping.Mapper;
+import org.mongodb.morphia.query.Query;
+import org.mongodb.morphia.query.UpdateOperations;
+import org.mongodb.morphia.query.UpdateResults;
 
-import static com.mongodb.client.model.Filters.gt;
+import java.util.Arrays;
+
 
 /**
  * Created by toonsev on 12/22/2016.
  */
 public class MongoDatabaseProvider implements DatabaseProvider {
-    private static final String USERS_COL_NAME = "users";
-    private static final String TRANSACTIONS_COL_NAME = "transactions";
+    private final Morphia morphia = new Morphia();{
+        morphia.mapPackage("com.exorathcloud.service.credits.res");
+    }
 
-    private static final String ACCOUNT_ID_KEY = "accountId";
-    private static final String TRANSACTION_STATE_KEY = "state";
-    private static final String LAST_UPDATED_KEY = "lastUpdated";
-    private static final String AMOUNT_KEY = "amount";
-    private static final String BALANCE_KEY = "balance";
-
-    private MongoClient mongoClient;
-
-    private MongoCollection<Document> usersCollection;
-    private MongoCollection<Document> transactionsCollection;
+    private Datastore datastore;
 
     public MongoDatabaseProvider(MongoProvider mongoProvider, TableNameProvider databaseNameProvider) {
-        mongoClient = mongoProvider.getClient();
-        MongoDatabase db = mongoClient.getDatabase(databaseNameProvider.getTableName());
-        usersCollection = db.getCollection(USERS_COL_NAME);
-        transactionsCollection = db.getCollection(TRANSACTIONS_COL_NAME);
+        datastore = morphia.createDatastore(mongoProvider.getClient(), databaseNameProvider.getTableName());
+        datastore.ensureIndexes();
     }
 
     @Override
     public Transaction getTransaction(String transactionId) {
-        Document document = transactionsCollection.find(new Document("_id", transactionId)).limit(1).first();
-        return document == null ? null : new Transaction(
-                document.getString(ACCOUNT_ID_KEY),
-                TransactionState.valueOf(document.getString(TRANSACTION_STATE_KEY)),
-                document.getDate(LAST_UPDATED_KEY),
-                document.getLong(AMOUNT_KEY));
+        return datastore.get(Transaction.class, transactionId);
     }
 
     @Override
     public Success unsafeIncrement(String accountId, long amount, Long minimum) {
-        Document requirements = new Document("_id", accountId);
-        if (minimum != null)
-            requirements.append(BALANCE_KEY, new Document("$gt", minimum));
-        Document query = new Document(BALANCE_KEY, new Document("$inc", amount));
-        UpdateResult result = usersCollection.updateOne(requirements, query);
-        return result.getModifiedCount() == 0 ? new Success(false, "Insufficient balance") : new Success(true);
+        Query<Account> query = datastore.createQuery(Account.class).field(Mapper.ID_KEY).equal(accountId);
+        UpdateOperations<Account> ops = datastore.createUpdateOperations(Account.class).inc("balance", amount);
+        UpdateOptions opts = new UpdateOptions();
+        if(minimum == null)
+            opts.upsert(true);
+        else
+            query = query.field("balance").greaterThanOrEq(minimum);
+
+       UpdateResults res = datastore.update(query, ops, opts);
+        return res.getUpdatedCount() > 0 ? new Success(true) : new Success(false, "No document with exists or minimum not met");
     }
 
     @Override
     public Success safeIncrement(String accountId, String transactionId, long amount, Long minimum) {
-        return null;
+        Query<Account> query = datastore.createQuery(Account.class).field(Mapper.ID_KEY).equal(accountId)
+                .field(Account.PENDING_TRANSACTIONS_KEY).equal(transactionId);
+        UpdateOperations<Account> ops = datastore.createUpdateOperations(Account.class)
+                .inc("balance", amount)
+                .removeAll(Account.PENDING_TRANSACTIONS_KEY, transactionId);
+
+
+        UpdateResults res = datastore.update(query, ops);
+        return res.getUpdatedCount() > 0 ? new Success(true) : new Success(false, "account did not contain transaction");
     }
 
     @Override
     public boolean putTransaction(TransactionState requiredState, Transaction transaction) {
-        return false;
+        Query<Transaction> query = datastore.createQuery(Transaction.class).field(Mapper.ID_KEY).equal(transaction.getTransactionId());
+        UpdateOperations<Transaction> ops = datastore.createUpdateOperations(Transaction.class)
+                .setOnInsert(Transaction.ACCOUNT_ID_KEY, transaction.getAccountId())
+                .setOnInsert(Transaction.AMOUNT_KEY, transaction.getAmount())
+                .set(Transaction.STATE_KEY, transaction.getTransactionState())
+                .set(Transaction.LAST_UPDATE_KEY, transaction.getLastUpdate());
+        UpdateOptions options = new UpdateOptions();
+        if(requiredState == TransactionState.NOT_CREATED) {
+            options = options.upsert(true);
+            query.field(Transaction.STATE_KEY).doesNotExist();
+        }else
+            query.field(Transaction.STATE_KEY).equal(requiredState);
+        UpdateResults res = datastore.update(query, ops);
+        return res.getUpdatedCount() > 0;
     }
 
     @Override
     public boolean putPendingTransactionInAccount(String accountId, String transactionId) {
-        return false;
+        Query<Account> query = datastore.createQuery(Account.class).field(Mapper.ID_KEY).equal(accountId).field(Account.PENDING_TRANSACTIONS_KEY).notIn(Arrays.asList(new String[]{transactionId}));
+        UpdateOperations<Account> ops = datastore.createUpdateOperations(Account.class).push(Account.PENDING_TRANSACTIONS_KEY, transactionId);
+        UpdateOptions opts = new UpdateOptions().upsert(true);
+        UpdateResults res = datastore.update(query, ops, opts);
+        return res.getUpdatedCount() > 0;
     }
 
     @Override
     public Account getAccount(String accountId, int pendingTransactionsBatch) {
-        return null;
+        return datastore.find(Account.class).field(Mapper.ID_KEY).equal(accountId).get();
     }
 }

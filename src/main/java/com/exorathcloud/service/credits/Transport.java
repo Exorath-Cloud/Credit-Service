@@ -29,7 +29,7 @@ public class Transport {
 
         get("/accounts/:accountId", getGetCreditsRoute(service), GSON::toJson);
         post("/accounts/:accountId/unsafeInc", getUnsafeIncRoute(service), GSON::toJson);
-        post("/accounts/:accountId/inc", getUnsafeIncRoute(service), GSON::toJson);
+        post("/accounts/:accountId/inc", getSafeIncRoute(service), GSON::toJson);
     }
 
     public static Route getGetCreditsRoute(Service service) {
@@ -41,13 +41,13 @@ public class Transport {
     }
 
     public static Route getSafeIncRoute(Service service) {
-
         return (req, res) -> {
             long amount = Long.valueOf(req.queryParams("amount"));
             String accountId = req.queryParams("accountId");
             String transactionId = req.queryParams("transactionId");
-            if(amount == 0)
-                return new Transaction(accountId, TransactionState.CANCELLED, Calendar.getInstance().getTime(), 0);
+
+            if(transactionId == null || accountId == null || amount == 0)
+                return new Transaction(transactionId, accountId, TransactionState.CANCELLED, Calendar.getInstance().getTime(), 0);
             if(transactionId == null){
                 return service.increment(accountId, amount);
             }else{
